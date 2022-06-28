@@ -118,3 +118,6 @@ prime/
 
 # Manpage
 /man
+
+# Custom
+docker-data/

@@ -1,3 +1,6 @@
+ARG BASE_IMAGE=alpine:3.13
+
+
 #Build stage
 FROM golang:1.18-alpine3.15 AS build-env
 
@@ -10,20 +13,22 @@ ENV TAGS "bindata timetzdata $TAGS"
 ARG CGO_EXTRA_CFLAGS
 
 #Build deps
-RUN apk --no-cache add build-base git nodejs npm
+RUN apk --no-cache add build-base git nodejs npm curl
 
 #Setup repo
 COPY . ${GOPATH}/src/code.gitea.io/gitea
 WORKDIR ${GOPATH}/src/code.gitea.io/gitea
 
-#Checkout version if set
-RUN if [ -n "${GITEA_VERSION}" ]; then git checkout "${GITEA_VERSION}"; fi \
- && make clean-all build
+
+FROM build-env AS builder
+
+RUN ${GOPATH}/src/code.gitea.io/gitea/build_gitea.sh
 
 # Begin env-to-ini build
 RUN go build contrib/environment-to-ini/environment-to-ini.go
 
-FROM alpine:3.13
+
+FROM ${BASE_IMAGE}
 LABEL maintainer="maintainers@gitea.io"
 
 EXPOSE 22 3000
@@ -62,7 +67,7 @@ ENTRYPOINT ["/usr/bin/entrypoint"]
 CMD ["/bin/s6-svscan", "/etc/s6"]
 
 COPY docker/root /
-COPY --from=build-env /go/src/code.gitea.io/gitea/gitea /app/gitea/gitea
-COPY --from=build-env /go/src/code.gitea.io/gitea/environment-to-ini /usr/local/bin/environment-to-ini
+COPY --from=builder /go/src/code.gitea.io/gitea/gitea /app/gitea/gitea
+COPY --from=builder /go/src/code.gitea.io/gitea/environment-to-ini /usr/local/bin/environment-to-ini
 RUN chmod 755 /usr/bin/entrypoint /app/gitea/gitea /usr/local/bin/gitea /usr/local/bin/environment-to-ini
 RUN chmod 755 /etc/s6/gitea/* /etc/s6/openssh/* /etc/s6/.s6-svscan/*
